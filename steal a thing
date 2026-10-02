@@ -27,7 +27,7 @@ const pick=()=>{const r=Math.random();return r<.45?0:r<.75?1:r<.92?2:r<.985?3:4}
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const ORDER=[3,7,2,6,1,5,0,4],TS=2.5,SP=60,TRAVEL=(WH-110)/SP;
 let lobby=null,code='',phase='boot',room=null,myBase=null,myPeer=null,claimAt=1e18,full=false,hue=Math.floor(Math.random()*360),coins=30,carry=null,msg='',msgT=0,time=0,rate=0,cx=0,cy=0;
-const me={x:255,y:1240},mySl=Array(6).fill(null),gone=new Set();
+const me={x:255,y:1240},mySl=Array(6).fill(null),gone=new Set(),walkers=[];
 const B=[];
 for(let s=0;s<2;s++)for(let r=0;r<4;r++){const bx=s?410:40,by=70+r*340;
   B.push({bx,by,s,sl:[0,1,2,3,4,5].map(k=>({x:bx+50+(k%2)*90,y:by+60+(k>>1)*90}))})}
@@ -36,10 +36,40 @@ const keys={};let ptr=null;
 addEventListener('keydown',e=>keys[e.key.toLowerCase()]=1);
 addEventListener('keyup',e=>keys[e.key.toLowerCase()]=0);
 const pos=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}};
-cv.addEventListener('pointerdown',e=>{const q=pos(e);ptr=q;cv.setPointerCapture(e.pointerId)});
-cv.addEventListener('pointermove',e=>{if(ptr)ptr=pos(e)});
-addEventListener('pointerup',()=>ptr=null);
-addEventListener('pointercancel',()=>ptr=null);
+const REACH=70;
+const PID=()=>myPeer||'me';
+const mkWp=(base,k)=>{const b=B[base],q=b.sl[k];return[{x:320,y:b.by+150},{x:b.s?b.bx+20:b.bx+170,y:b.by+150},{x:q.x,y:q.y}]};
+function applyBuy(ev){
+  gone.add(ev.n);
+  const w=walkers.find(w=>w.n===ev.n);
+  if(w){
+    if(ev.seq<w.seq||(ev.seq===w.seq&&ev.peer<=w.peer))return;
+    if(w.peer===PID()&&ev.peer!==PID())coins+=T[w.t].p;
+    walkers.splice(walkers.indexOf(w),1);
+  }
+  walkers.push({n:ev.n,t:ev.t,x:ev.x,y:ev.y,base:ev.base,k:ev.k,seq:ev.seq,peer:ev.peer,wp:mkWp(ev.base,ev.k),i:0});
+}
+const buyables=()=>beltItems().map(b=>({n:b.n,t:b.t,x:320,y:b.y})).concat(walkers.filter(w=>w.base!==myBase).map(w=>({n:w.n,t:w.t,x:w.x,y:w.y,w})));
+function nearest(){let best=null,bd=REACH;for(const b of buyables()){const d=Math.hypot(b.x-me.x,b.y-me.y);if(d<bd){bd=d;best=b}}return best}
+function buy(b){
+  if(myBase==null)return;
+  const t=T[b.t];
+  if(coins<t.p){say('Need '+t.p+' coins');return}
+  const k=mySl.findIndex((v,i)=>v==null&&!walkers.some(w=>w.base===myBase&&w.k===i));
+  if(k<0){say('Your base is full');return}
+  coins-=t.p;say((b.w?'Took ':'Bought ')+t.n);
+  const ev={n:b.n,t:b.t,base:myBase,k,seq:b.w?b.w.seq+1:1,peer:PID(),x:Math.round(b.x),y:Math.round(b.y)};
+  applyBuy(ev);if(room)room.emit('buy',ev).catch(()=>{});
+}
+addEventListener('keydown',e=>{if(e.key.toLowerCase()==='e'&&document.activeElement!==ci){const b=nearest();if(b)buy(b)}});
+const joy={id:null,x:0,y:0},JC={x:64,y:560,r:44};let isTouch=matchMedia('(pointer:coarse)').matches;
+function joyMove(e){const q=pos(e),vx=q.x-JC.x,vy=q.y-JC.y,d=Math.hypot(vx,vy)||1,m=Math.min(d,JC.r);joy.x=vx/d*m/JC.r;joy.y=vy/d*m/JC.r;if(Math.hypot(joy.x,joy.y)<.12){joy.x=0;joy.y=0}}
+cv.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='touch'){isTouch=true;const q=pos(e);if(joy.id==null&&Math.hypot(q.x-JC.x,q.y-JC.y)<100){joy.id=e.pointerId;joyMove(e);cv.setPointerCapture(e.pointerId)}else{const wx=q.x+cx,wy=q.y+cy,b=buyables().find(b=>Math.hypot(wx-b.x,wy-b.y)<36);if(b){if(Math.hypot(b.x-me.x,b.y-me.y)<=REACH)buy(b);else say('Walk closer')}}}
+  else{ptr=pos(e);cv.setPointerCapture(e.pointerId)}});
+cv.addEventListener('pointermove',e=>{if(e.pointerId===joy.id)joyMove(e);else if(ptr&&e.pointerType!=='touch')ptr=pos(e)});
+const up=e=>{if(e.pointerId===joy.id){joy.id=null;joy.x=joy.y=0}if(e.pointerType!=='touch')ptr=null};
+addEventListener('pointerup',up);addEventListener('pointercancel',up);
 const others=()=>room?room.peers().filter(p=>!p.sameTab&&p.kind==='viewer'):[];
 const takenMap=()=>{const m={};others().forEach(p=>{const b=p.presence.base;if(typeof b==='number')m[b]=p});return m};
 const typeAt=n=>{const h=Math.sin(n*127.1)*43758.5453,r=h-Math.floor(h);return r<.45?0:r<.75?1:r<.92?2:r<.985?3:4};
@@ -49,7 +79,7 @@ function assign(){
   if(!room||performance.now()<claimAt)return;
   const mp=room.peers().find(p=>p.sameTab);if(!mp)return;myPeer=mp.peer;
   const tk=takenMap();
-  if(myBase!=null){const c=tk[myBase];if(c&&c.peer<myPeer){myBase=null;mySl.fill(null);room.presence({base:null}).catch(()=>{})}else return}
+  if(myBase!=null){const c=tk[myBase];if(c&&c.peer<myPeer){myBase=null;mySl.fill(null);walkers.length=0;room.presence({base:null}).catch(()=>{})}else return}
   const f=ORDER.find(k=>!tk[k]);
   if(f==null){full=true;return}
   full=false;goBase(f);room.presence({base:f,h:hue}).catch(()=>{});
@@ -57,7 +87,7 @@ function assign(){
 const newCode=()=>Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.random()*32|0]).join('');
 function begin(r,c){
   room=r;code=c;phase='play';
-  room.on('buy',m=>{if(m.data&&typeof m.data.n==='number')gone.add(m.data.n)});
+  room.on('buy',m=>{const d=m.data;if(d&&typeof d.n==='number'&&typeof d.peer==='string'&&Number.isInteger(d.base)&&d.base>=0&&d.base<8&&Number.isInteger(d.k)&&d.k>=0&&d.k<6&&T[d.t]&&typeof d.seq==='number'&&isFinite(d.x)&&isFinite(d.y))applyBuy(d)});
   room.onPeers(assign);claimAt=performance.now()+1800;setInterval(assign,1000);
   setInterval(()=>{if(room.connected())room.presence({x:Math.round(me.x),y:Math.round(me.y),sl:mySl.map(t=>t==null?-1:t)}).catch(()=>{})},100);
   lobby.presence({sess:1}).catch(()=>{});
@@ -87,14 +117,14 @@ function update(dt){
   let dx=(keys.arrowright||keys.d?1:0)-(keys.arrowleft||keys.a?1:0),dy=(keys.arrowdown||keys.s?1:0)-(keys.arrowup||keys.w?1:0);
   if(!dx&&!dy&&ptr){const vx=ptr.x+cx-me.x,vy=ptr.y+cy-me.y,d=Math.hypot(vx,vy);if(d>6){dx=vx/d;dy=vy/d}}
   else{const l=Math.hypot(dx,dy)||1;dx/=l;dy/=l}
+  if(joy.id!=null){dx=joy.x;dy=joy.y}
   const sp=carry!=null?125:150;
   me.x=clamp(me.x+dx*sp*dt,34,WW-34);me.y=clamp(me.y+dy*sp*dt,34,WH-34);
   rate=mySl.reduce((a,t)=>a+(t!=null?T[t].i:0),0);coins+=rate*dt;
-  if(myBase!=null)for(const b of beltItems()){
-    if(Math.hypot(320-me.x,b.y-me.y)<30&&coins>=T[b.t].p){
-      const k=mySl.indexOf(null);
-      if(k>=0){coins-=T[b.t].p;mySl[k]=b.t;gone.add(b.n);if(room)room.emit('buy',{n:b.n}).catch(()=>{});say('Bought '+T[b.t].n)}else say('Your base is full');
-    }
+  for(let i=walkers.length-1;i>=0;i--){
+    const w=walkers[i],p=w.wp[w.i],vx=p.x-w.x,vy=p.y-w.y,d=Math.hypot(vx,vy);
+    if(d<4){if(++w.i>=w.wp.length){if(w.base===myBase&&mySl[w.k]==null)mySl[w.k]=w.t;walkers.splice(i,1)}}
+    else{const m=Math.min(d,50*dt);w.x+=vx/d*m;w.y+=vy/d*m}
   }
   if(myBase==null&&phase!=='code')say(phase==='boot'?'Looking for a game...':full?'All 8 bases are taken. Watching until one opens.':'Finding your base...');
   msgT-=dt;cx=clamp(me.x-W/2,0,WW-W);cy=clamp(me.y-H/2,0,WH-H);
@@ -128,7 +158,12 @@ function draw(){
   g.fillStyle='#5a2d17';g.fillRect(0,0,WW,24);g.fillRect(0,WH-24,WW,24);g.fillRect(0,0,24,WH);g.fillRect(WW-24,0,24,WH);
   g.fillStyle='#3d1d0e';g.fillRect(0,20,WW,4);g.fillRect(0,WH-24,WW,4);g.fillRect(20,0,4,WH);g.fillRect(WW-24,0,4,WH);
   g.fillStyle='#1a1a1a';g.fillRect(290,0,60,26);g.fillRect(290,WH-26,60,26);g.fillStyle='#8a8a8a';g.fillRect(310,6,20,14);g.fillRect(310,WH-20,20,14);
-  for(const b of beltItems()){const t=T[b.t];g.fillStyle=t.c;g.fillRect(302,b.y-18,36,36);em(t.e,320,b.y,26);tag(t,320,b.y-32);tx('🪙'+t.p,320,b.y+30,10,coins>=t.p?'#b6ffe6':'#ffd0da')}
+  const nr=nearest();
+  for(const b of beltItems()){const t=T[b.t];g.fillStyle=t.c;g.fillRect(302,b.y-18,36,36);em(t.e,320,b.y,26);tag(t,320,b.y-32);tx('🪙'+t.p,320,b.y+30,10,coins>=t.p?'#b6ffe6':'#ffd0da');}
+  for(const w of walkers){g.fillStyle=T[w.t].c;g.fillRect(w.x-15,w.y-15,30,30);em(T[w.t].e,w.x,w.y,26);tx('To base '+(w.base+1),w.x,w.y+26,7,'#fff');if(w.base!==myBase)tx('🪙'+T[w.t].p,w.x,w.y-24,8,'#ffd23f')}
+  for(const b of buyables()){if(isTouch?Math.hypot(b.x-me.x,b.y-me.y)<=REACH:(nr&&nr.n===b.n)){
+    if(isTouch){g.strokeStyle='#fff';g.lineWidth=3;g.strokeRect(b.x-20,b.y-20,40,40)}
+    else{g.fillStyle='#ffd23f';g.fillRect(b.x+22,b.y-12,24,24);tx('E',b.x+34,b.y,14,'#160d33')}}}
   for(const p of others()){const q=p.presence;if(q.x==null)continue;g.fillStyle='hsl('+(q.h||200)+',70%,55%)';g.fillRect(q.x-10,q.y-2,20,16);g.fillStyle='#ffd23f';g.fillRect(q.x-8,q.y-16,16,14);g.fillStyle='#160d33';g.fillRect(q.x-4,q.y-11,3,4);g.fillRect(q.x+2,q.y-11,3,4)}
   g.fillStyle='hsl('+hue+',70%,55%)';g.fillRect(me.x-10,me.y-2,20,16);g.fillStyle='#ffd23f';g.fillRect(me.x-8,me.y-16,16,14);g.fillStyle='#160d33';g.fillRect(me.x-4,me.y-11,3,4);g.fillRect(me.x+2,me.y-11,3,4);
   if(carry!=null){em(T[carry].e,me.x,me.y-34,24);tag(T[carry],me.x,me.y-56)}
@@ -140,7 +175,8 @@ function draw(){
   B.forEach((b,i)=>{g.fillStyle=i===myBase?'#ffd23f':tk[i]?'#3ea0ff':'#6b7280';g.fillRect(mx+b.bx*sx,my+b.by*sy,10,16)});
   g.fillStyle='#fff';g.fillRect(mx+me.x*sx-2,my+me.y*sy-2,4,4);
   if(msgT>0){g.globalAlpha=Math.min(1,msgT);tx(msg,W/2,240,15,'#fff');g.globalAlpha=1}
-  if(time<8){tx('Drag to move',W/2,420,14,'#fff');tx('Walk into characters on the red carpet to buy them.',W/2,442,9,'#fff');tx('Friends who join get their own base (up to 8).',W/2,458,9,'#fff')}
+  if(isTouch){g.fillStyle='rgba(255,255,255,.18)';g.beginPath();g.arc(JC.x,JC.y,JC.r,0,7);g.fill();g.strokeStyle='rgba(255,255,255,.4)';g.lineWidth=2;g.stroke();g.fillStyle='rgba(255,255,255,.55)';g.beginPath();g.arc(JC.x+joy.x*JC.r,JC.y+joy.y*JC.r,20,0,7);g.fill()}
+  if(time<8){tx(isTouch?'Use the joystick to move':'Drag to move',W/2,420,14,'#fff');tx(isTouch?'Walk up to a character and tap it to buy.':'Walk up to a character and press E to buy.',W/2,442,9,'#fff');tx('You can also buy ones that are walking to a friend.',W/2,458,9,'#fff')}
 }
 let last=performance.now();
 (function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;update(dt);draw();requestAnimationFrame(loop)})(last);
