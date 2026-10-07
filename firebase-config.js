@@ -10,6 +10,4 @@ window.STEAL_A_THING_FIREBASE_CONFIG = {
   appId: "1:177030473715:web:05a5ca56493881c3aa9486"
 };
 
-// Filled with the owner's Firebase Auth UID after their first account is created.
-window.STEAL_A_THING_ADMIN_UID = "";
 
