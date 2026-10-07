@@ -379,13 +379,19 @@ const drops=Array.from({length:140},()=>({x:Math.random()*W,y:Math.random()*H,l:
 const EVN={snow:['❄️ Snow event! Everything is frosty','The snow stopped'],rain:['🌧️ Rain event! It is pouring','The rain stopped'],rainbow:['🌈 Rainbow event! 5x rainbows!','The rainbow faded'],tacos:['🌮 Raining tacos!','The tacos stopped']};
 
 // ── DEN SNAP cutscene ──
-let densnap=null,snapEvents=new Set(["rainbow"]);
-function startDenSnap(reward=true){
+let densnap=null,snapEvents=new Set(["rainbow"]),globalDenSnapAt=0,lastGlobalDenSnap=0;
+function maybePlayGlobalDenSnap(){
+  const age=Date.now()-globalDenSnapAt;
+  if(phase==='play'&&!densnap&&globalDenSnapAt!==lastGlobalDenSnap&&age>=-3000&&age<13000){
+    lastGlobalDenSnap=globalDenSnapAt;
+    startDenSnap(false,globalDenSnapAt);
+  }
+}
+function startDenSnap(reward=true,startedAt=Date.now()){
   if(densnap||(reward&&!isOwner))return;
   document.getElementById('adm').style.display='none';
-  densnap={t0:performance.now()/1000,phase:0,shake:0,flash:0,particles:[],rewarded:!reward};
-  // RTDB omits empty objects, so include data to satisfy the required payload field.
-  if(reward&&room)room.emit('densnap',{startedAt:Date.now()}).catch(e=>{console.warn('DEN SNAP broadcast failed',e);say('Cutscene started here, but could not send it to the lobby')});
+  densnap={t0:performance.now()/1000-Math.max(0,(Date.now()-startedAt)/1000),phase:0,shake:0,flash:0,particles:[],rewarded:!reward};
+  if(reward&&db)db.ref('globalControls/denSnap').set({startedAt}).catch(e=>{console.warn('Global DEN SNAP broadcast failed',e);say('Cutscene started here, but could not send it to everyone')});
   npcs.forEach((n,i)=>setTimeout(()=>{
     const lines=["Wait what is that?!","SAMMY?!","Oh no oh no oh no","Is this admin abuse?!","GET TO COVER","I can't believe this"];
     npcSay(n,lines[i%lines.length],4);
@@ -397,6 +403,10 @@ function startDenSnap(reward=true){
     o.connect(gn);gn.connect(AC.destination);o.start();o.stop(AC.currentTime+2);
   }}catch(e){}
 }
+if(db)db.ref('globalControls/denSnap').on('value',s=>{
+  const v=s.val();
+  if(v&&Number.isFinite(v.startedAt)){globalDenSnapAt=v.startedAt;maybePlayGlobalDenSnap()}
+});
 function updateDenSnap(dt){
   if(!densnap)return;
   const t=performance.now()/1000-densnap.t0;
@@ -728,12 +738,12 @@ function assign(){
 const newCode=()=>Array.from({length:6},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.random()*32|0]).join('');
 function begin(r,c,pub){
   room=r;code=c;phase='play';r.presence({pub:!!pub,name:playerName}).catch(()=>{});
+  maybePlayGlobalDenSnap();
   room.on('buy',m=>{const d=m.data;if(d&&d.peer!==account?.uid&&typeof d.n==='number'&&typeof d.peer==='string'&&Number.isInteger(d.base)&&d.base>=0&&d.base<8&&Number.isInteger(d.k)&&d.k>=0&&d.k<6&&T[d.t]&&typeof d.seq==='number'&&isFinite(d.x)&&isFinite(d.y))applyBuy(d)});
   room.on('spawn',m=>{const d=m.data;if(d&&d.peer!==account?.uid&&Number.isInteger(d.n)&&Number.isInteger(d.t)&&T[d.t]&&Number.isInteger(d.rb)&&d.rb>=0&&d.rb<=3&&Number.isFinite(d.t0)&&Number.isFinite(d.y0))runwaySpawns.push({n:d.n,t:d.t,t0:d.t0,y0:d.y0,rb:d.rb})});
   room.on('announce',m=>{const d=m.data;if(d&&typeof d.t==='string')showAnn(d.t.slice(0,80))});
   room.on('gift',m=>{const d=m.data;if(d&&Number.isFinite(d.n)&&d.n>0&&d.n<=100000&&typeof d.id==='string')gift(d.n,d.id)});
   room.on('ev',m=>{const d=m.data;if(d&&(d.id==='snow'||d.id==='rain'||d.id==='rainbow'||d.id==='tacos'||d.id==='none'))setForced({id:d.id,off:d.off===true})});
-  room.on('densnap',()=>startDenSnap(false));
   room.onPeers(assign);claimAt=performance.now()+1800;setInterval(assign,1000);
   setInterval(()=>{if(room.connected())room.presence({x:Math.round(me.x),y:Math.round(me.y),sl:mySl.map((t,i)=>t==null?-1:t+10*(mySlRb[i]||0))}).catch(()=>{})},100);
 
