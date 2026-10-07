@@ -380,10 +380,11 @@ const EVN={snow:['❄️ Snow event! Everything is frosty','The snow stopped'],r
 
 // ── DEN SNAP cutscene ──
 let densnap=null,snapEvents=new Set(["rainbow"]);
-function startDenSnap(){
-  if(!isOwner||densnap)return;
+function startDenSnap(reward=true){
+  if(densnap||(reward&&!isOwner))return;
   document.getElementById('adm').style.display='none';
-  densnap={t0:performance.now()/1000,phase:0,shake:0,flash:0,particles:[],rewarded:false};
+  densnap={t0:performance.now()/1000,phase:0,shake:0,flash:0,particles:[],rewarded:!reward};
+  if(reward&&room)room.emit('densnap',{}).catch(()=>say('Cutscene started here, but could not send it to the lobby'));
   npcs.forEach((n,i)=>setTimeout(()=>{
     const lines=["Wait what is that?!","SAMMY?!","Oh no oh no oh no","Is this admin abuse?!","GET TO COVER","I can't believe this"];
     npcSay(n,lines[i%lines.length],4);
@@ -731,6 +732,7 @@ function begin(r,c,pub){
   room.on('announce',m=>{const d=m.data;if(d&&typeof d.t==='string')showAnn(d.t.slice(0,80))});
   room.on('gift',m=>{const d=m.data;if(d&&Number.isFinite(d.n)&&d.n>0&&d.n<=100000&&typeof d.id==='string')gift(d.n,d.id)});
   room.on('ev',m=>{const d=m.data;if(d&&(d.id==='snow'||d.id==='rain'||d.id==='rainbow'||d.id==='tacos'||d.id==='none'))setForced({id:d.id,off:d.off===true})});
+  room.on('densnap',()=>startDenSnap(false));
   room.onPeers(assign);claimAt=performance.now()+1800;setInterval(assign,1000);
   setInterval(()=>{if(room.connected())room.presence({x:Math.round(me.x),y:Math.round(me.y),sl:mySl.map((t,i)=>t==null?-1:t+10*(mySlRb[i]||0))}).catch(()=>{})},100);
 
