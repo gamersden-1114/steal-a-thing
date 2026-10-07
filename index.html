@@ -762,11 +762,7 @@ document.getElementById('cb').onclick=()=>go(()=>tryCode(ci.value),'Checking...'
 ci.onkeydown=e=>{if(e.key==='Enter')go(()=>tryCode(ci.value),'Checking...')};
 // Require account-backed rooms for each multiplayer session.
 phase='menu';
-document.getElementById('playNow').addEventListener('click',()=>{
-  document.getElementById('welcome').style.display='none';
-  say('Welcome to Base '+(myBase+1)+' — let’s build your collection!');
-  try{unlock()}catch{}
-});
+document.getElementById('playNow').addEventListener('click',()=>{document.getElementById('authGate').style.display='flex';document.getElementById('authError').textContent='';});
 
 // ── Update ──
 function update(dt){
