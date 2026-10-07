@@ -384,7 +384,8 @@ function startDenSnap(reward=true){
   if(densnap||(reward&&!isOwner))return;
   document.getElementById('adm').style.display='none';
   densnap={t0:performance.now()/1000,phase:0,shake:0,flash:0,particles:[],rewarded:!reward};
-  if(reward&&room)room.emit('densnap',{}).catch(()=>say('Cutscene started here, but could not send it to the lobby'));
+  // RTDB omits empty objects, so include data to satisfy the required payload field.
+  if(reward&&room)room.emit('densnap',{startedAt:Date.now()}).catch(e=>{console.warn('DEN SNAP broadcast failed',e);say('Cutscene started here, but could not send it to the lobby')});
   npcs.forEach((n,i)=>setTimeout(()=>{
     const lines=["Wait what is that?!","SAMMY?!","Oh no oh no oh no","Is this admin abuse?!","GET TO COVER","I can't believe this"];
     npcSay(n,lines[i%lines.length],4);
