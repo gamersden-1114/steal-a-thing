@@ -1,0 +1,56 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "profiles": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "handles": {
+      "$handle": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()))",
+        ".validate": "newData.isString() && newData.val() === auth.uid"
+      }
+    },
+    "rooms": {
+      "$code": {
+        "members": {
+          ".read": "auth != null",
+          "$uid": {
+            ".read": "auth != null",
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "newData.hasChildren(['name', 'h', 'x', 'y', 'sl'])",
+            "name": {
+              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
+            },
+            "base": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 7"
+            },
+            "h": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 360"
+            },
+            "x": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 700"
+            },
+            "y": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1600"
+            },
+            "sl": {}
+          }
+        },
+        "events": {
+          ".read": "auth != null && root.child('rooms').child($code).child('members').child(auth.uid).exists()",
+          "$eventId": {
+            ".read": "auth != null && root.child('rooms').child($code).child('members').child(auth.uid).exists()",
+            ".write": "auth != null && root.child('rooms').child($code).child('members').child(auth.uid).exists() && ((newData.exists() && newData.child('type').val() === 'buy' && !data.exists()) || (data.exists() && !newData.exists() && data.child('createdAt').val() < now - 60000))",
+            ".validate": "newData.hasChildren(['type', 'payload', 'createdAt'])"
+          }
+        }
+      }
+    }
+  }
+}
+
