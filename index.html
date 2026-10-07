@@ -121,7 +121,7 @@ try{const saved=JSON.parse(localStorage.getItem('sat_save_v1')||'null');if(saved
 let auth=null,db=null,account=null,playerName='Player',cloudReady=false,saveQueued=false;try{firebase.initializeApp(window.STEAL_A_THING_FIREBASE_CONFIG);auth=firebase.auth();db=firebase.database()}catch(e){console.error('Firebase setup failed',e)}
 function packGame(){return {coins:Math.floor(coins),sl:mySl.map(v=>v==null?-1:v),rb:mySlRb.map(v=>v||0),disc:{t:[...disc.t],m:Object.fromEntries(Object.entries(disc.m).map(([k,v])=>[k,[...v]]))}}}
 function queueCloudSave(){if(!account||account.isAnonymous||!db||!cloudReady||saveQueued)return;saveQueued=true;setTimeout(async()=>{saveQueued=false;try{await db.ref('profiles/'+account.uid+'/save').set(packGame())}catch(e){console.warn('Cloud save failed',e)}},1200)}
-async function restoreProfile(user){account=user;cloudReady=false;isOwner=false;try{if(user.isAnonymous){playerName='Guest-'+user.uid.slice(0,4).toUpperCase();document.getElementById('authGate').style.display='none';document.getElementById('welcome').style.display='none';gate.style.display='flex';return}const snap=await db.ref('profiles/'+user.uid).once('value'),p=snap.val()||{};playerName=(p.handle||user.email?.split('@')[0]||'Player').slice(0,16);isOwner=(await db.ref('admins/'+user.uid).once('value')).val()===true;if(p.save){const v=p.save;coins=Math.max(30,Number(v.coins)||30);mySl.fill(null);mySlRb.fill(false);(v.sl||[]).slice(0,6).forEach((x,i)=>{if(Number.isInteger(x)&&x>=0&&x<T.length){mySl[i]=x;mySlRb[i]=[0,1,2,3].includes(v.rb?.[i])?v.rb[i]:0}});if(v.disc){disc.t=new Set(v.disc.t||[]);disc.m={};for(const k in(v.disc.m||{}))disc.m[k]=new Set(v.disc.m[k]||[])}}cloudReady=true;if(!p.save)queueCloudSave();document.getElementById('authGate').style.display='none';document.getElementById('welcome').style.display='none';gate.style.display='flex'}catch(e){console.error(e);document.getElementById('authError').textContent='Could not load your account. Please try again.'}}
+async function restoreProfile(user){account=user;listenForGlobalDenSnap();cloudReady=false;isOwner=false;try{if(user.isAnonymous){playerName='Guest-'+user.uid.slice(0,4).toUpperCase();document.getElementById('authGate').style.display='none';document.getElementById('welcome').style.display='none';gate.style.display='flex';return}const snap=await db.ref('profiles/'+user.uid).once('value'),p=snap.val()||{};playerName=(p.handle||user.email?.split('@')[0]||'Player').slice(0,16);isOwner=(await db.ref('admins/'+user.uid).once('value')).val()===true;if(p.save){const v=p.save;coins=Math.max(30,Number(v.coins)||30);mySl.fill(null);mySlRb.fill(false);(v.sl||[]).slice(0,6).forEach((x,i)=>{if(Number.isInteger(x)&&x>=0&&x<T.length){mySl[i]=x;mySlRb[i]=[0,1,2,3].includes(v.rb?.[i])?v.rb[i]:0}});if(v.disc){disc.t=new Set(v.disc.t||[]);disc.m={};for(const k in(v.disc.m||{}))disc.m[k]=new Set(v.disc.m[k]||[])}}cloudReady=true;if(!p.save)queueCloudSave();document.getElementById('authGate').style.display='none';document.getElementById('welcome').style.display='none';gate.style.display='flex'}catch(e){console.error(e);document.getElementById('authError').textContent='Could not load your account. Please try again.'}}
 if(auth)auth.onAuthStateChanged(u=>{if(u)restoreProfile(u);else{account=null;cloudReady=false}});
 let lastSave=0;
 let runwaySpawns=[],spawnIdCounter=-1,spawnTarget='base',spawnMut='none';
@@ -379,7 +379,12 @@ const drops=Array.from({length:140},()=>({x:Math.random()*W,y:Math.random()*H,l:
 const EVN={snow:['❄️ Snow event! Everything is frosty','The snow stopped'],rain:['🌧️ Rain event! It is pouring','The rain stopped'],rainbow:['🌈 Rainbow event! 5x rainbows!','The rainbow faded'],tacos:['🌮 Raining tacos!','The tacos stopped']};
 
 // ── DEN SNAP cutscene ──
-let densnap=null,snapEvents=new Set(["rainbow"]),globalDenSnapAt=0,lastGlobalDenSnap=0;
+let densnap=null,snapEvents=new Set(["rainbow"]),globalDenSnapAt=0,lastGlobalDenSnap=0,globalDenSnapListener=null;
+function listenForGlobalDenSnap(){
+  if(!db||globalDenSnapListener)return;
+  globalDenSnapListener=s=>{const v=s.val();if(v&&Number.isFinite(v.startedAt)){globalDenSnapAt=v.startedAt;maybePlayGlobalDenSnap()}};
+  db.ref('globalControls/denSnap').on('value',globalDenSnapListener,e=>console.warn('Global DEN SNAP listener failed',e));
+}
 function maybePlayGlobalDenSnap(){
   const age=Date.now()-globalDenSnapAt;
   if(phase==='play'&&!densnap&&globalDenSnapAt!==lastGlobalDenSnap&&age>=-3000&&age<13000){
@@ -403,10 +408,6 @@ function startDenSnap(reward=true,startedAt=Date.now()){
     o.connect(gn);gn.connect(AC.destination);o.start();o.stop(AC.currentTime+2);
   }}catch(e){}
 }
-if(db)db.ref('globalControls/denSnap').on('value',s=>{
-  const v=s.val();
-  if(v&&Number.isFinite(v.startedAt)){globalDenSnapAt=v.startedAt;maybePlayGlobalDenSnap()}
-});
 function updateDenSnap(dt){
   if(!densnap)return;
   const t=performance.now()/1000-densnap.t0;
